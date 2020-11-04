@@ -144,7 +144,7 @@ But additionally you can enable Kerberos authentication in LDAP provider with th
 
 Once you do this, you should also ensure that your Kerberos client configuration file is properly configured with KEYCLOAK.ORG domain. 
 See [../testsuite/integration-arquillian/tests/base/src/test/resources/kerberos/test-krb5.conf](../testsuite/integration-arquillian/tests/base/src/test/resources/kerberos/test-krb5.conf) for inspiration. The location of Kerberos configuration file 
-is platform dependent (In linux it's file `/etc/krb5.conf` )
+is platform dependent (In linux it's file `/etc/krb5.conf`, for windows see below)
 
 Then you need to configure your browser to allow SPNEGO/Kerberos login from `localhost` .
 
@@ -156,6 +156,28 @@ For Chrome, you just need to run the browser with command similar to this (more 
 ```
 /usr/bin/google-chrome-stable --auth-server-whitelist="localhost"
 ```
+
+Under Windows, testing this with Chrome, IE and Edge problably won't work, even when adding localhost or http://localhost to the Local intranet zone as described e.g. [here](https://active-directory-wp.com/docs/Networking/Single_Sign_On/Configure_browsers_to_use_Kerberos.html). Reason being that Chrome/IE will still use the SSPI default implementation. You need to install a local Kerberos client and configure Firefox to use GSSAPI as follows, described in detail [in this article](https://medium.com/adaltas/kerberos-and-spnego-authentication-on-windows-with-firefox-15600e10d98c). The steps are
+* Download and install [MIT Kerberos Client for Windows](https://web.mit.edu/kerberos/dist/) with defaults, restart your computer
+* Navigate to file `C:\ProgramData\MIT\Kerberos5\krb5.ini` and make it editable (Properties > Security > Permissions > Add full permissions for 'Users')
+** Paste the content of `test-krb5.conf` from the link above 
+** Check if path `C:\Users\{username}\AppData\Local\Temp` (with your windows username) exists on your local file system, or choose another path where the MIT Kerberos Client can write to
+** in the [libdefaults] section, add `default_ccache_name=C:\Users\{username}\AppData\Local\Temp\krb5cache` (replacing username!), or the path from the step before
+** krb5cache will be the file where the tickets are cached, MIT Kerberos client will create it
+** save krb5.ini
+* Start MIT Kerberos Ticket Manager and create a ticket (or use kinit as below), this will only work if Kerberos is running and the settings in `krb5.ini` are correct 
+* Configure Firefox as follows by writing `about:config` in the address bar
+** network.auth.use-sspi: false
+*** this will disable SSPI for Firefox. SSPI is a Windows-specific proprietary variant of GSSAPI, GGSAPI is an IETF standard and by the MIT Kerberos client we just installed
+** network.negotiate-auth.trusted-uris:localhost
+*** this will enable SPNEGO for all URLs on localhost
+** network.negotiate-auth.using-native-gsslib: false
+** network.negotiate-auth.gsslib: C:\Program Files\MIT\Kerberos\bin\gssapi64.dll
+*** the two settings above will force Firefox to use the GGSAPI with the MIT Kerberos client
+** network.negotiate-auth.delegation-uris:localhost
+** network.negotiate-auth.allow-non-fqdn: true
+*** Not sure if the two settings above are really needed
+** be aware to turn back these settings if you want Firefox to use proper Windows Active Directory SSO again
 
 
 Finally test the integration by retrieve kerberos ticket. In many OS you can achieve this by running command from CMD like:
